@@ -104,22 +104,6 @@ class MyAVProvider : MainAPI() {
                     val extractorData = element.attr("data-video") ?: return@forEach
                     loadExtractor(extractorData, iframe.url, subtitleCallback, callback)
                 }
-        }, {
-            val iv = "9262859232435825"
-            val secretKey = "93422192433952489752342908585752"
-            val secretDecryptKey = secretKey
-            GogoHelper.extractVidstream(
-                iframe.url,
-                this.name,
-                callback,
-                iv,
-                secretKey,
-                secretDecryptKey,
-                isUsingAdaptiveKeys = false,
-                isUsingAdaptiveData = true,
-                iframeDocument = iframeDoc
-            )
-        })
 
         return true
     }
