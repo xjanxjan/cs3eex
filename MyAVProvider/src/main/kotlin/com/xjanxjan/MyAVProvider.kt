@@ -11,7 +11,7 @@ import org.jsoup.nodes.Element
 class MyAVProvider : MainAPI() {
     private val globalTvType = TvType.NSFW
 
-    override var mainUrl = "https://myav.com/en"
+    override var mainUrl = "https://myav.com/"
     override var name = "MyAVProvider"
     override val hasMainPage = true
     override val hasChromecastSupport = true
@@ -20,7 +20,7 @@ class MyAVProvider : MainAPI() {
     override val supportedTypes = setOf(TvType.NSFW)
 
     override val mainPage = mainPageOf(
-        "$mainUrl/new?page=" to "New",
+        "$mainUrl/en/new?page=" to "New",
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
@@ -62,7 +62,7 @@ class MyAVProvider : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val url = "$mainUrl/video/search?search=${query}"
+        val url = "$mainUrl/en/search/${query}"
         val document = app.get(url).document
         return document.select("div.sectionWrapper div.wrap").mapNotNull {
             if (it == null) { return@mapNotNull null }
