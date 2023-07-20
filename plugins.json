@@ -1,0 +1,20 @@
+[
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=kisskh.me&sz=%size%",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/xjanxjan/cs3eex",
+        "fileSize": 10127,
+        "status": 1,
+        "language": "en",
+        "authors": [
+            "xjanxjan"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 1,
+        "internalName": "MyAVProvider",
+        "url": "https://raw.githubusercontent.com/xjanxjan/cs3eex/builds/MyAVProvider.cs3",
+        "name": "MyAVProvider"
+    }
+]
