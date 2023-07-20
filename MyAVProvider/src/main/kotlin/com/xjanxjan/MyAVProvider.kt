@@ -1,15 +1,11 @@
 package com.xjanxjan
 
-import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.mvvm.safeApiCall
-import com.lagradost.cloudstream3.utils.AppUtils.parseJson
-import com.lagradost.cloudstream3.utils.AppUtils.toJson
-import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
+import com.lagradost.cloudstream3.extractors.helper.GogoHelper
 import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.M3u8Helper
+import com.lagradost.cloudstream3.utils.httpsify
 import com.lagradost.cloudstream3.utils.loadExtractor
-import java.util.ArrayList
+import org.jsoup.nodes.Element
 
 class MyAVProvider : MainAPI() {
     override var mainUrl = "https://myav.com/en"
@@ -21,7 +17,7 @@ class MyAVProvider : MainAPI() {
     )
 
     override val mainPage = mainPageOf(
-        "today-hot" to "Most viewed today",
+        "new?page=" to "Recent update",
     )
 
     override suspend fun getMainPage(
