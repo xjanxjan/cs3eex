@@ -1,111 +1,142 @@
 package com.xjanxjan
 
+import com.lagradost.cloudstream3.MainAPI
+import com.lagradost.cloudstream3.TvType
 import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.extractors.helper.GogoHelper
-import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.httpsify
-import com.lagradost.cloudstream3.utils.loadExtractor
+import com.lagradost.cloudstream3.mvvm.logError
+import com.lagradost.cloudstream3.network.WebViewResolver
+import com.lagradost.cloudstream3.utils.*
 import org.jsoup.nodes.Element
 
 class MyAVProvider : MainAPI() {
+    private val globalTvType = TvType.NSFW
+
     override var mainUrl = "https://myav.com/en"
     override var name = "MyAVProvider"
     override val hasMainPage = true
+    override val hasChromecastSupport = true
     override val hasDownloadSupport = false
-    override val supportedTypes = setOf(
-        TvType.NSFW,
-    )
+    override val vpnStatus = VPNStatus.MightBeNeeded //Cause it's a big site
+    override val supportedTypes = setOf(TvType.NSFW)
 
     override val mainPage = mainPageOf(
-        "new?page=" to "Recent update",
+        "$mainUrl/new?page=" to "New",
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val document = app.get("$mainUrl/${request.data}$page").document
-        val home = document.select("div.list-drama div.item").mapNotNull {
-            it.toSearchResult()
+        try {
+            val categoryData = request.data
+            val categoryName = request.name
+            val pagedLink = if (page > 0) categoryData + page else categoryData
+            val soup = app.get(pagedLink).document
+            val home = soup.select("div.sectionWrapper div.wrap").mapNotNull {
+                if (it == null) { return@mapNotNull null }
+                val title = it.selectFirst("span.title a")?.text() ?: ""
+                val link = fixUrlNull(it.selectFirst("a")?.attr("href")) ?: return@mapNotNull null
+                val img = fetchImgUrl(it.selectFirst("img"))
+                MovieSearchResponse(
+                    name = title,
+                    url = link,
+                    apiName = this.name,
+                    type = globalTvType,
+                    posterUrl = img
+                )
+            }
+            if (home.isNotEmpty()) {
+                return newHomePageResponse(
+                    list = HomePageList(
+                        name = categoryName,
+                        list = home,
+                        isHorizontalImages = true
+                    ),
+                    hasNext = true
+                )
+            } else {
+                throw ErrorLoadingException("No homepage data found!")
+            }
+        } catch (e: Exception) {
+            //e.printStackTrace()
+            logError(e)
         }
-        return newHomePageResponse(request.name, home)
-    }
-
-    private fun Element.toSearchResult(): SearchResponse? {
-        val href = fixUrl(this.selectFirst("a")?.attr("href") ?: return null)
-        val title = this.selectFirst("span.title")?.text()?.trim() ?: return null
-        val posterUrl = fixUrlNull(this.selectFirst("div.pic img")?.attr("src"))
-
-        return newTvSeriesSearchResponse(title, href, TvType.AsianDrama) {
-            this.posterUrl = posterUrl
-        }
+        throw ErrorLoadingException()
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val document = app.get("$mainUrl/search.html?keyword=$query").document
-        return document.select("div.list-drama div.item").mapNotNull {
-            it.toSearchResult()
-        }
-    }
-
-    override suspend fun load(url: String): LoadResponse? {
+        val url = "$mainUrl/video/search?search=${query}"
         val document = app.get(url).document
-
-        val title = document.selectFirst("div.barContentInfo a")?.text()?.trim() ?: return null
-        val poster = fixUrlNull(document.selectFirst("div.barContentInfo img")?.attr("src"))
-        val tags = document.select("div.barContentInfo p:contains(Genres:) a").map { it.text().removePrefix(",").trim() }
-
-        val year = document.selectFirst("div.barContentInfo p.type.Releasea")?.text()?.trim()?.toIntOrNull()
-        val status = getStatus(document.selectFirst("div.barContentInfo p:contains(Status:)")?.ownText()?.trim())
-        val description = document.selectFirst("div.barContentInfo p.des")?.nextElementSiblings()?.select("p")?.text()
-
-        val episodes = document.select("ul.listing li").map {
-            val name = it.selectFirst("a")?.attr("title")
-            val link = fixUrlNull(it.selectFirst("a")?.attr("href"))
-            val epNum = Regex("Episode\\s(\\d+)").find("$name")?.groupValues?.getOrNull(1)?.toIntOrNull()
-            newEpisode(link) {
-                this.name = name
-                this.episode = epNum
-            }
-        }.reversed()
-
-        if (episodes.size == 1) {
-            return newMovieLoadResponse(title, url, TvType.Movie, episodes[0].data) {
-                posterUrl = poster
-                this.year = year
-                plot = description
-                this.tags = tags
-            }
-        } else {
-            return newTvSeriesLoadResponse(title, url, TvType.AsianDrama, episodes = episodes) {
-                posterUrl = poster
-                this.year = year
-                showStatus = status
-                plot = description
-                this.tags = tags
-            }
-        }
+        return document.select("div.sectionWrapper div.wrap").mapNotNull {
+            if (it == null) { return@mapNotNull null }
+            val title = it.selectFirst("span.title a")?.text() ?: return@mapNotNull null
+            val link = fixUrlNull(it.selectFirst("a")?.attr("href")) ?: return@mapNotNull null
+            val image = fetchImgUrl(it.selectFirst("img"))
+            MovieSearchResponse(
+                name = title,
+                url = link,
+                apiName = this.name,
+                type = globalTvType,
+                posterUrl = image
+            )
+        }.distinctBy { it.url }
     }
 
+    override suspend fun load(url: String): LoadResponse {
+        val soup = app.get(url).document
+        val title = soup.selectFirst(".title span")?.text() ?: ""
+        val poster: String? = soup.selectFirst("div.video-wrapper .mainPlayerDiv img")?.attr("src") ?:
+        soup.selectFirst("head meta[property=og:image]")?.attr("content")
+        val tags = soup.select("div.categoriesWrapper a")
+            .map { it?.text()?.trim().toString().replace(", ","") }
+        return MovieLoadResponse(
+            name = title,
+            url = url,
+            apiName = this.name,
+            type = globalTvType,
+            dataUrl = url,
+            posterUrl = poster,
+            tags = tags,
+            plot = title
+        )
+    }
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-
-        val document = app.get(data).document
-        val server = document.selectFirst("select#selectServer option")?.attr("value")
-        val iframe = app.get(httpsify(server ?: return false))
-        val iframeDoc = iframe.document
-
-        argamap({
-            iframeDoc.select(".list-server-items > .linkserver")
-                .forEach { element ->
-                    val status = element.attr("data-status") ?: return@forEach
-                    if (status != "1") return@forEach
-                    val extractorData = element.attr("data-video") ?: return@forEach
-                    loadExtractor(extractorData, iframe.url, subtitleCallback, callback)
-                }
-
+        app.get(
+            url = data,
+            interceptor = WebViewResolver(
+                Regex("(master\\.m3u8\\?.*)")
+            )
+        ).let { response ->
+            M3u8Helper().m3u8Generation(
+                M3u8Helper.M3u8Stream(
+                    response.url,
+                    headers = response.headers.toMap()
+                ), true
+            ).apmap { stream ->
+                callback(
+                    ExtractorLink(
+                        source = name,
+                        name = "${this.name} m3u8",
+                        url = stream.streamUrl,
+                        referer = mainUrl,
+                        quality = getQualityFromName(stream.quality?.toString()),
+                        isM3u8 = true
+                    )
+                )
+            }
+        }
         return true
     }
 
+    private fun fetchImgUrl(imgsrc: Element?): String? {
+        return try { imgsrc?.attr("data-src")
+            ?: imgsrc?.attr("data-mediabook")
+            ?: imgsrc?.attr("alt")
+            ?: imgsrc?.attr("data-mediumthumb")
+            ?: imgsrc?.attr("data-thumb_url")
+            ?: imgsrc?.attr("src")
+        } catch (e:Exception) { null }
+    }
 }
